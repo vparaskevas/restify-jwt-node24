@@ -2,7 +2,102 @@ var jwt = require('jsonwebtoken');
 var assert = require('assert');
 
 var restifyjwt = require('../lib');
-var restify = require('restify');
+const errors = require('restify-errors');
+
+describe('Node 24 module loading', function () {
+  it('loads without importing Restify at runtime', function () {
+    const script = `
+      const Module = require('module');
+      const originalLoad = Module._load;
+      Module._load = function (name) {
+        if (name === 'restify') throw new Error('Unexpected Restify runtime import');
+        return originalLoad.apply(this, arguments);
+      };
+      if (typeof require(process.argv[1]) !== 'function') process.exit(1);
+    `;
+    require('child_process').execFileSync(process.execPath, ['-e', script, require.resolve('../lib')], { stdio: 'pipe' });
+  });
+});
+
+describe('Node 24 real HTTP authentication', function () {
+  const restify = require('restify');
+  const http = require('http');
+  const secret = 'synthetic-node24-test-secret';
+  let server;
+
+  beforeEach(function (done) {
+    server = restify.createServer({ strictNext: true });
+    server.listen(0, '127.0.0.1', done);
+  });
+
+  afterEach(function (done) {
+    server.close(done);
+  });
+
+  const get = function (path, token, check, done) {
+    const headers = token ? { authorization: 'Bearer ' + token } : {};
+    const pending = http.get({ hostname: '127.0.0.1', port: server.address().port, path, headers }, function (response) {
+      let body = '';
+      response.setEncoding('utf8');
+      response.on('data', chunk => { body += chunk; });
+      response.on('end', function () {
+        try {
+          check(response, JSON.parse(body));
+          done();
+        } catch (error) {
+          done(error);
+        }
+      });
+    });
+    pending.setTimeout(2000, function () { pending.destroy(new Error('Synthetic HTTP request timed out')); });
+    pending.on('error', done);
+  };
+
+  const mountProtected = function (options) {
+    server.use(restifyjwt(Object.assign({ secret, algorithms: ['HS256'] }, options)));
+    server.get('/protected', function protectedHandler(req, res, next) {
+      res.send({ id: req.user.id });
+      return next();
+    });
+  };
+
+  it('accepts a valid token and exposes only the expected identity', function (done) {
+    mountProtected();
+    get('/protected', jwt.sign({ id: 7 }, secret), function (response, body) {
+      assert.strictEqual(response.statusCode, 200);
+      assert.deepStrictEqual(body, { id: 7 });
+    }, done);
+  });
+
+  ['missing', 'expired', 'invalid signature', 'revoked'].forEach(function (mode) {
+    it('rejects ' + mode + ' credentials with HTTP 401', function (done) {
+      mountProtected({ isRevoked: function (req, payload, callback) { callback(null, mode === 'revoked'); } });
+      const token = mode === 'missing' ? undefined : jwt.sign(
+        mode === 'expired' ? { id: 7, exp: 1 } : { id: 7 },
+        mode === 'invalid signature' ? 'another-synthetic-secret' : secret
+      );
+      get('/protected', token, function (response, body) {
+        assert.strictEqual(response.statusCode, 401);
+        assert.strictEqual(body.code, mode === 'revoked' ? 'Unauthorized' : 'InvalidCredentials');
+        assert.strictEqual(body.id, undefined);
+      }, done);
+    });
+  });
+
+  it('preserves a public unless path without an authorization header', function (done) {
+    server.use(restifyjwt({ secret }).unless({ path: ['/public'] }));
+    server.get('/public', function publicHandler(req, res, next) {
+      assert.strictEqual(req.user, undefined);
+      res.send({ public: true });
+      return next();
+    });
+
+    get('/public', undefined, function (response, body) {
+      assert.strictEqual(response.statusCode, 200);
+      assert.deepStrictEqual(body, { public: true });
+    }, done);
+  });
+});
 
 describe('failure tests', function () {
   var req = {};
@@ -78,7 +173,7 @@ describe('failure tests', function () {
     restifyjwt({secret: 'different-shhhh'})(req, res, function(err) {
       assert.ok(err);
       assert.equal(err.body.code, 'InvalidCredentials');
-      assert.equal(err.we_cause.message, 'invalid signature');
+      assert.equal(err.cause().message, 'invalid signature');
     });
   });
 
@@ -91,7 +186,7 @@ describe('failure tests', function () {
     restifyjwt({secret: 'shhhhhh', audience: 'not-expected-audience'})(req, res, function(err) {
       assert.ok(err);
       assert.equal(err.body.code, 'InvalidCredentials');
-      assert.equal(err.we_cause.message, 'jwt audience invalid. expected: not-expected-audience');
+      assert.equal(err.cause().message, 'jwt audience invalid. expected: not-expected-audience');
     });
   });
 
@@ -104,7 +199,7 @@ describe('failure tests', function () {
     restifyjwt({secret: 'shhhhhh'})(req, res, function(err) {
       assert.ok(err);
       assert.equal(err.body.code, 'InvalidCredentials');
-      assert.equal(err.we_cause.message, 'jwt expired');
+      assert.equal(err.cause().message, 'jwt expired');
     });
   });
 
@@ -117,7 +212,7 @@ describe('failure tests', function () {
     restifyjwt({secret: 'shhhhhh', issuer: 'http://wrong'})(req, res, function(err) {
       assert.ok(err);
       assert.equal(err.body.code, 'InvalidCredentials');
-      assert.equal(err.we_cause.message, 'jwt issuer invalid. expected: http://wrong');
+      assert.equal(err.cause().message, 'jwt issuer invalid. expected: http://wrong');
     });
   });
 
@@ -126,7 +221,7 @@ describe('failure tests', function () {
     var token = jwt.sign({foo: 'bar'}, secret);
 
     function getTokenThatThrowsError() {
-      throw new restify.errors.InvalidCredentialsError('Invalid token!');
+      throw new errors.InvalidCredentialsError('Invalid token!');
     }
 
     restifyjwt({
@@ -154,7 +249,7 @@ describe('failure tests', function () {
       restifyjwt({secret: secret})(req,res, function(err) {
         assert.ok(err);
         assert.equal(err.body.code, 'InvalidCredentials');
-        assert.equal(err.we_cause.message, 'invalid token');
+        assert.equal(err.cause().message, 'invalid token');
       });
   });
 

@@ -1,5 +1,20 @@
 # restify-jwt
 
+## Node 24 Derivative
+
+This repository derives from https://github.com/vparaskevas/restify-jwt at
+`9f57c59f805f0f6b37667be347fcc24f220647cf`, retaining its history, original author attribution and MIT license.
+The original fork remains unchanged. This derivative targets Node.js 24 and Restify 12.0.0.
+
+The middleware imports operational errors from `restify-errors` 8.0.2 instead of requiring Restify at runtime.
+Revoked tokens return an `UnauthorizedError` with HTTP status 401 without a Restify monkey patch. `jsonwebtoken`
+remains pinned to 8.5.1; token verification, secret/revocation callbacks, token extraction and `unless` behavior are
+otherwise unchanged.
+
+Run `npm test` for the inherited verification tests and new real HTTP authentication regressions. The script invokes
+Mocha's actual runner directly because the legacy Mocha 1 launcher can exit successfully without running tests on
+Node.js 24. The inherited Buffer fixtures still emit a deprecation warning; they are not application boot evidence.
+
 [![NPM](https://img.shields.io/npm/v/restify-jwt.svg)](https://www.npmjs.com/package/restify-jwt)
 [![Build Status](https://travis-ci.org/amrav/restify-jwt.svg)](https://travis-ci.org/amrav/restify-jwt)
 

@@ -15,6 +15,24 @@ describe('revoked jwts', function(){
     }
   });
 
+  it('Node 24 revocation returns an operational 401 without a Restify monkey patch', function(done) {
+    const errors = require('restify-errors');
+    const token = jwt.sign({ jti: revoked_id, foo: 'bar' }, secret);
+    const req = { headers: { authorization: 'Bearer ' + token } };
+    let nextCalls = 0;
+
+    middleware(req, {}, function(error) {
+      nextCalls += 1;
+      assert.ok(error instanceof errors.UnauthorizedError);
+      assert.strictEqual(error.statusCode, 401);
+      assert.strictEqual(error.body.code, 'Unauthorized');
+      assert.strictEqual(error.message, 'The token has been revoked.');
+      assert.strictEqual(req.user, undefined);
+      assert.strictEqual(nextCalls, 1);
+      done();
+    });
+  });
+
   it('should throw if token is revoked', function(){
     var req = {};
     var res = {};
@@ -25,7 +43,7 @@ describe('revoked jwts', function(){
 
     middleware(req, res, function(err) {
       assert.ok(err);
-      assert.equal(err.body.code, 'UnauthorizedError');
+      assert.equal(err.body.code, 'Unauthorized');
       assert.equal(err.message, 'The token has been revoked.');
     });
   });

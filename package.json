@@ -1,6 +1,6 @@
 {
   "name": "restify-jwt",
-  "version": "0.4.0",
+  "version": "0.4.0-node24.0",
   "description": "JWT authentication middleware.",
   "keywords": [
     "auth",
@@ -16,10 +16,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git://github.com/amrav/restify-jwt.git"
+    "url": "https://github.com/vparaskevas/restify-jwt-node24.git"
   },
   "bugs": {
-    "url": "http://github.com/amrav/restify-jwt/issues"
+    "url": "https://github.com/vparaskevas/restify-jwt-node24/issues"
   },
   "author": {
     "name": "Vikrant Varma",
@@ -35,20 +35,20 @@
   "dependencies": {
     "async": "^0.9.0",
     "express-unless": "^0.3.0",
-    "jsonwebtoken": "^8.0.0"
+    "jsonwebtoken": "8.5.1",
+    "restify-errors": "8.0.2"
   },
   "devDependencies": {
     "mocha": "1.x.x",
-    "restify": "^6.2.3"
+    "restify": "12.0.0"
   },
   "peerDependencies": {
-    "restify": "5.x || 6.x",
-    "restify-errors": "^5.0.0"
+    "restify": "^12.0.0"
   },
   "engines": {
-    "node": "8.x"
+    "node": ">=24"
   },
   "scripts": {
-    "test": "node_modules/.bin/mocha --reporter spec"
+    "test": "node node_modules/mocha/bin/_mocha --reporter spec"
   }
 }
